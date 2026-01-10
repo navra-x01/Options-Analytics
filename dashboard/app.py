@@ -14,15 +14,32 @@ import sys
 import os
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+except Exception:
+    # Fallback: try adding current working directory
+    try:
+        cwd = os.getcwd()
+        if cwd not in sys.path:
+            sys.path.insert(0, cwd)
+    except Exception:
+        pass
 
-from pricing.black_scholes import black_scholes_call, black_scholes_put
-from pricing.greeks import compute_all_greeks, compute_greeks_fd
-from pricing.implied_vol import compute_implied_vol, compute_iv_chain
-from pricing.monte_carlo import monte_carlo_european, compare_mc_bs
-from volatility.smile import build_volatility_smile, plot_volatility_smile
-from volatility.surface import build_volatility_surface, plot_volatility_surface
-from analysis.pnl_simulation import plot_payoff_diagram, plot_greeks_approximation
+# Import required modules with error handling
+try:
+    from pricing.black_scholes import black_scholes_call, black_scholes_put
+    from pricing.greeks import compute_all_greeks, compute_greeks_fd
+    from pricing.implied_vol import compute_implied_vol, compute_iv_chain
+    from pricing.monte_carlo import monte_carlo_european, compare_mc_bs
+    from volatility.smile import build_volatility_smile, plot_volatility_smile
+    from volatility.surface import build_volatility_surface, plot_volatility_surface
+    from analysis.pnl_simulation import plot_payoff_diagram, plot_greeks_approximation
+except ImportError as e:
+    st.error(f"Import Error: {e}")
+    st.error("Please ensure all dependencies are installed: pip install -r requirements.txt")
+    st.stop()
 
 # Page configuration
 st.set_page_config(
@@ -99,6 +116,16 @@ option_type = st.sidebar.selectbox(
     help="European call or put option",
 )
 
+# Calculate Black-Scholes price (needed across multiple tabs)
+try:
+    if option_type == "call":
+        bs_price = black_scholes_call(S, K, T, r, sigma)
+    else:
+        bs_price = black_scholes_put(S, K, T, r, sigma)
+except Exception as e:
+    st.error(f"Error calculating option price: {e}")
+    bs_price = 0.0
+
 # Main tabs
 tab1, tab2, tab3 = st.tabs(
     ["Single Option Analysis", "Volatility Analysis", "Option Chain Analysis"]
@@ -113,10 +140,6 @@ with tab1:
 
     with col1:
         st.subheader("Black-Scholes Pricing")
-        if option_type == "call":
-            bs_price = black_scholes_call(S, K, T, r, sigma)
-        else:
-            bs_price = black_scholes_put(S, K, T, r, sigma)
 
         st.metric("Option Price", f"${bs_price:.4f}")
 
@@ -136,61 +159,76 @@ with tab1:
             "Number of Simulations",
             min_value=1000,
             max_value=1000000,
-            value=100000,
+            value=50000,  # Reduced default for faster computation
             step=10000,
             key="mc_sims",
         )
 
-        mc_price, std_error = monte_carlo_european(
-            S, K, T, r, sigma, option_type, n_simulations=int(n_simulations)
-        )
+        try:
+            mc_price, std_error = monte_carlo_european(
+                S, K, T, r, sigma, option_type, n_simulations=int(n_simulations)
+            )
 
-        st.metric("MC Price", f"${mc_price:.4f}")
-        st.metric("Standard Error", f"${std_error:.6f}")
-        st.metric("Error vs BS", f"${abs(mc_price - bs_price):.6f}")
+            st.metric("MC Price", f"${mc_price:.4f}")
+            st.metric("Standard Error", f"${std_error:.6f}")
+            st.metric("Error vs BS", f"${abs(mc_price - bs_price):.6f}")
+        except Exception as e:
+            st.error(f"Error in Monte Carlo simulation: {e}")
+            st.info("Try reducing the number of simulations or adjusting parameters.")
 
     # Greeks section
     st.subheader("Greeks")
-    greeks = compute_all_greeks(S, K, T, r, sigma, option_type)
+    try:
+        greeks = compute_all_greeks(S, K, T, r, sigma, option_type)
 
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Delta (Δ)", f"{greeks['delta']:.4f}")
-    with col2:
-        st.metric("Gamma (Γ)", f"{greeks['gamma']:.4f}")
-    with col3:
-        st.metric("Theta (Θ)", f"{greeks['theta']:.4f}")
-    with col4:
-        st.metric("Vega (ν)", f"{greeks['vega']:.4f}")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Delta (Δ)", f"{greeks['delta']:.4f}")
+        with col2:
+            st.metric("Gamma (Γ)", f"{greeks['gamma']:.4f}")
+        with col3:
+            st.metric("Theta (Θ)", f"{greeks['theta']:.4f}")
+        with col4:
+            st.metric("Vega (ν)", f"{greeks['vega']:.4f}")
+    except Exception as e:
+        st.error(f"Error calculating Greeks: {e}")
+        greeks = {'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0}
 
     # Greeks comparison table
     st.subheader("Analytic vs Finite-Difference Greeks")
-    greeks_fd = compute_greeks_fd(S, K, T, r, sigma, option_type)
+    try:
+        greeks_fd = compute_greeks_fd(S, K, T, r, sigma, option_type)
+    except Exception as e:
+        st.error(f"Error calculating finite-difference Greeks: {e}")
+        greeks_fd = {'delta': 0.0, 'gamma': 0.0, 'theta': 0.0, 'vega': 0.0}
 
-    comparison_df = pd.DataFrame(
-        {
-            "Greek": ["Delta", "Gamma", "Theta", "Vega"],
-            "Analytic": [
-                greeks["delta"],
-                greeks["gamma"],
-                greeks["theta"],
-                greeks["vega"],
-            ],
-            "Finite-Diff": [
-                greeks_fd["delta"],
-                greeks_fd["gamma"],
-                greeks_fd["theta"],
-                greeks_fd["vega"],
-            ],
-            "Difference": [
-                abs(greeks["delta"] - greeks_fd["delta"]),
-                abs(greeks["gamma"] - greeks_fd["gamma"]),
-                abs(greeks["theta"] - greeks_fd["theta"]),
-                abs(greeks["vega"] - greeks_fd["vega"]),
-            ],
-        }
-    )
-    st.dataframe(comparison_df, use_container_width=True)
+    try:
+        comparison_df = pd.DataFrame(
+            {
+                "Greek": ["Delta", "Gamma", "Theta", "Vega"],
+                "Analytic": [
+                    greeks.get("delta", 0.0),
+                    greeks.get("gamma", 0.0),
+                    greeks.get("theta", 0.0),
+                    greeks.get("vega", 0.0),
+                ],
+                "Finite-Diff": [
+                    greeks_fd.get("delta", 0.0),
+                    greeks_fd.get("gamma", 0.0),
+                    greeks_fd.get("theta", 0.0),
+                    greeks_fd.get("vega", 0.0),
+                ],
+                "Difference": [
+                    abs(greeks.get("delta", 0.0) - greeks_fd.get("delta", 0.0)),
+                    abs(greeks.get("gamma", 0.0) - greeks_fd.get("gamma", 0.0)),
+                    abs(greeks.get("theta", 0.0) - greeks_fd.get("theta", 0.0)),
+                    abs(greeks.get("vega", 0.0) - greeks_fd.get("vega", 0.0)),
+                ],
+            }
+        )
+        st.dataframe(comparison_df, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error displaying Greeks comparison: {e}")
 
     # Sensitivity plots
     st.subheader("Sensitivity Analysis")
@@ -200,101 +238,119 @@ with tab1:
         ["Spot Price (S)", "Volatility (σ)", "Time to Maturity (T)"],
     )
 
-    if plot_type == "Spot Price (S)":
-        spot_range = np.linspace(0.5 * S, 1.5 * S, 100)
-        prices = []
-        for s in spot_range:
-            if option_type == "call":
-                prices.append(black_scholes_call(s, K, T, r, sigma))
-            else:
-                prices.append(black_scholes_put(s, K, T, r, sigma))
+    try:
+        if plot_type == "Spot Price (S)":
+            spot_range = np.linspace(max(0.5 * S, 1.0), 1.5 * S, 100)
+            prices = []
+            for s in spot_range:
+                try:
+                    if option_type == "call":
+                        prices.append(black_scholes_call(s, K, T, r, sigma))
+                    else:
+                        prices.append(black_scholes_put(s, K, T, r, sigma))
+                except:
+                    prices.append(0.0)
 
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=spot_range,
-                y=prices,
-                mode="lines",
-                name="Option Price",
-                line=dict(width=2),
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=spot_range,
+                    y=prices,
+                    mode="lines",
+                    name="Option Price",
+                    line=dict(width=2),
+                )
             )
-        )
-        fig.add_vline(x=S, line_dash="dash", line_color="red", annotation_text="Current Spot")
-        fig.update_layout(
-            title="Option Price vs Spot Price",
-            xaxis_title="Spot Price",
-            yaxis_title="Option Price",
-            template="plotly_white",
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    elif plot_type == "Volatility (σ)":
-        vol_range = np.linspace(0.01, 1.0, 100)
-        prices = []
-        for vol in vol_range:
-            if option_type == "call":
-                prices.append(black_scholes_call(S, K, T, r, vol))
-            else:
-                prices.append(black_scholes_put(S, K, T, r, vol))
-
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=vol_range,
-                y=prices,
-                mode="lines",
-                name="Option Price",
-                line=dict(width=2),
+            fig.add_vline(x=S, line_dash="dash", line_color="red", annotation_text="Current Spot")
+            fig.update_layout(
+                title="Option Price vs Spot Price",
+                xaxis_title="Spot Price",
+                yaxis_title="Option Price",
+                template="plotly_white",
             )
-        )
-        fig.add_vline(
-            x=sigma, line_dash="dash", line_color="red", annotation_text="Current Volatility"
-        )
-        fig.update_layout(
-            title="Option Price vs Volatility",
-            xaxis_title="Volatility",
-            yaxis_title="Option Price",
-            template="plotly_white",
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
 
-    else:  # Time to Maturity
-        T_range = np.linspace(0.01, T * 2, 100)
-        prices = []
-        for t in T_range:
-            if option_type == "call":
-                prices.append(black_scholes_call(S, K, t, r, sigma))
-            else:
-                prices.append(black_scholes_put(S, K, t, r, sigma))
+        elif plot_type == "Volatility (σ)":
+            vol_range = np.linspace(0.01, 1.0, 100)
+            prices = []
+            for vol in vol_range:
+                try:
+                    if option_type == "call":
+                        prices.append(black_scholes_call(S, K, T, r, vol))
+                    else:
+                        prices.append(black_scholes_put(S, K, T, r, vol))
+                except:
+                    prices.append(0.0)
 
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=T_range,
-                y=prices,
-                mode="lines",
-                name="Option Price",
-                line=dict(width=2),
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=vol_range,
+                    y=prices,
+                    mode="lines",
+                    name="Option Price",
+                    line=dict(width=2),
+                )
             )
-        )
-        fig.add_vline(
-            x=T, line_dash="dash", line_color="red", annotation_text="Current Maturity"
-        )
-        fig.update_layout(
-            title="Option Price vs Time to Maturity",
-            xaxis_title="Time to Maturity (years)",
-            yaxis_title="Option Price",
-            template="plotly_white",
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            fig.add_vline(
+                x=sigma, line_dash="dash", line_color="red", annotation_text="Current Volatility"
+            )
+            fig.update_layout(
+                title="Option Price vs Volatility",
+                xaxis_title="Volatility",
+                yaxis_title="Option Price",
+                template="plotly_white",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        else:  # Time to Maturity
+            T_range = np.linspace(0.01, max(T * 2, 0.1), 100)
+            prices = []
+            for t in T_range:
+                try:
+                    if option_type == "call":
+                        prices.append(black_scholes_call(S, K, t, r, sigma))
+                    else:
+                        prices.append(black_scholes_put(S, K, t, r, sigma))
+                except:
+                    prices.append(0.0)
+
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=T_range,
+                    y=prices,
+                    mode="lines",
+                    name="Option Price",
+                    line=dict(width=2),
+                )
+            )
+            fig.add_vline(
+                x=T, line_dash="dash", line_color="red", annotation_text="Current Maturity"
+            )
+            fig.update_layout(
+                title="Option Price vs Time to Maturity",
+                xaxis_title="Time to Maturity (years)",
+                yaxis_title="Option Price",
+                template="plotly_white",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error generating sensitivity plot: {e}")
 
     # Payoff diagram
     st.subheader("Payoff Diagram")
     if st.button("Generate Payoff Diagram"):
-        import matplotlib.pyplot as plt
+        try:
+            import matplotlib
+            matplotlib.use('Agg')  # Use non-interactive backend
+            import matplotlib.pyplot as plt
 
-        fig = plot_payoff_diagram(S, K, T, r, sigma, option_type)
-        st.pyplot(fig)
+            fig = plot_payoff_diagram(S, K, T, r, sigma, option_type)
+            st.pyplot(fig)
+            plt.close(fig)  # Close figure to free memory
+        except Exception as e:
+            st.error(f"Error generating payoff diagram: {e}")
 
 # Tab 2: Volatility Analysis
 with tab2:
@@ -304,11 +360,13 @@ with tab2:
     col1, col2 = st.columns(2)
 
     with col1:
+        # Use bs_price if available, otherwise default to 10.0
+        default_price = bs_price if bs_price > 0 else 10.0
         market_price = st.number_input(
             "Market Price",
             min_value=0.01,
             max_value=1000.0,
-            value=bs_price,
+            value=default_price,
             step=0.01,
             help="Observed market price of the option",
         )
