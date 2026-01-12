@@ -22,12 +22,26 @@ except Exception:
     except Exception:
         pass
 
-# Import and run the dashboard app
-# This allows Streamlit Cloud to find the app at the root level
+"""
+Root entry point for Streamlit Cloud.
+
+We delegate all UI rendering to `dashboard.app.main()`. This ensures that
+the app logic is executed on every Streamlit rerun instead of only on the
+first import, which would otherwise result in a blank screen after any
+widget interaction.
+"""
+
+# Import and run the dashboard app's main function
 try:
-    from dashboard.app import *
+    from dashboard.app import main as run_dashboard
 except ImportError as e:
     import streamlit as st
+
     st.error(f"Import Error: {e}")
-    st.error("Please ensure all dependencies are installed and the project structure is correct.")
+    st.error(
+        "Please ensure all dependencies are installed and the project structure is correct."
+    )
     raise
+
+# Execute the dashboard for each Streamlit script run
+run_dashboard()
