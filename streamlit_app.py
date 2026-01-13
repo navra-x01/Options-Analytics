@@ -22,14 +22,7 @@ except Exception:
     except Exception:
         pass
 
-"""
-Root entry point for Streamlit Cloud.
 
-We delegate all UI rendering to `dashboard.app.main()`. This ensures that
-the app logic is executed on every Streamlit rerun instead of only on the
-first import, which would otherwise result in a blank screen after any
-widget interaction.
-"""
 
 # Import and run the dashboard app's main function
 try:
