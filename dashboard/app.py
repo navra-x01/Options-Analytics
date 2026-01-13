@@ -560,8 +560,6 @@ def main() -> None:
         """
         **Options Analytics Dashboard**
 
-        Built for quant role demonstrations.
-
         Features:
         - Black-Scholes pricing
         - Greeks calculation
